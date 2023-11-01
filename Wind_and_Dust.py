@@ -17,6 +17,15 @@ DUST ANALYSIS
 STATISTICAL ANALYSIS
 9.ztest scores
 
-'''
-fwoafha'w ohfee'whfi;owheouwf
- 
+''' 
+import ApplesToApples
+import pandas as pd
+
+#1.histograms (after combine subhourly)
+df = pd.read_csv('/Users/emily/Downloads/TestDataOutput40199099999_FAUCART.csv')
+df_hist = ApplesToApples.combineSubHourly(df)
+ApplesToApples.Histogram_AllTime(df_hist,'40199099999 TEST DATA','All Time')
+
+#2.monthly means (240)
+ISDmeans,m2means,numpoints = ApplesToApples.allYearsPlot(df,'40199099999 TEST DATA')
+print(ISDmeans,m2means,numpoints)
