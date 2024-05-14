@@ -19,8 +19,10 @@ import openpyxl
 import cartopy.crs as ccrs
 import matplotlib
 from pathlib import Path
-import monet
+# import monet
 import xarray as xr
+import scipy 
+import geocat.viz as gv
 
 #makes data frame from a single file in directory
 def ReadData(directory, station_ID):
@@ -145,19 +147,24 @@ def ReadNC(df,directory,lat,long,begin_date,end_date,property):
 
     return df_property, df_combinedHourly
 #finds the monthly means of MERRA-2 and ISD and returns as a vector
-def monthlyMeans240(df):
-    MERRA_2_Hourly_Means = df.groupby(by = ['year','month','day','hour'])['OG_winds_correct_box'].mean()
-    ISD_Hourly_Means = df.groupby(by = ['year','month','day','hour'])['Speed_ISD'].mean()
+def monthlyMeans240(df, ISDColumnName, M2ColumnName):
+    MERRA_2_Hourly_Means = df.groupby(by = ['year','month','day','hour'])[M2ColumnName].mean()
+    ISD_Hourly_Means = df.groupby(by = ['year','month','day','hour'])[ISDColumnName].mean()
     '''https://stackoverflow.com/questions/10373660/converting-a-pandas-groupby-output-from-series-to-dataframe '''
     MERRA_2_Hourly_Means = MERRA_2_Hourly_Means.reset_index()
     ISD_Hourly_Means = ISD_Hourly_Means.reset_index()
     #get monthly means for each and make the series a data frame
-    MERRA_2_Monthly_Means = MERRA_2_Hourly_Means.groupby(by = ['year', 'month'])['OG_winds_correct_box'].mean()
+    MERRA_2_Monthly_Means = MERRA_2_Hourly_Means.groupby(by = ['year', 'month'])[M2ColumnName].mean()
     MERRA_2_Monthly_Means = MERRA_2_Monthly_Means.reset_index()
-    num_points = ISD_Hourly_Means.groupby(by = ['year','month'])['Speed_ISD'].size()
-
-    ISD_Monthly_means = ISD_Hourly_Means.groupby(by = ['year', 'month'])['Speed_ISD'].mean()
+    num_points = ISD_Hourly_Means.groupby(by = ['year','month'])[ISDColumnName].size()
+    num_points = num_points.reset_index()
+    ISD_Monthly_means = ISD_Hourly_Means.groupby(by = ['year', 'month'])[ISDColumnName].mean()
     ISD_Monthly_means = ISD_Monthly_means.reset_index()
+    # dateDF = pd.to_datetime(df['DATE'])
+    # print(dateDF['DATE'])
+    # DaysInMonths = dateDF.groupby(by = [dateDF['DATE'].year, dateDF['DATE'].month])['DATE'].datetime.daysinmonth
+    # print('Number of days in months with measurements')
+    # print(DaysInMonths)
 
     return (ISD_Monthly_means, MERRA_2_Monthly_Means, num_points)
 
@@ -183,44 +190,75 @@ def Seasons(df):
 
     return df
 
+def DaysInMonth(df):
+    days_list = []
+    for j in range(0, len(df)):
+        month = df['month'][j]
+        year = df['year'][j]
+
+        if((month==2) and ((year%4==0)  or ((year%100==0) and (year%400==0)))):
+            days_list.append(29)
+
+        elif(month==2):
+            days_list.append(28)
+
+        elif(month==1 or month==3 or month==5 or month==7 or month==8 or month==10 or month==12):
+            days_list.append(31)
+
+        else:
+            days_list.append(30)
+    return days_list
+
 #makes plot of all years monthly means - should be 20 years * 12 months = 240 points
-def allYearsPlot(df, station_ID):
-    ISD_Monthly_means, MERRA_2_Monthly_Means, num_points = monthlyMeans240(df)
+def allYearsPlot(df, station_ID, ISDColumnName, M2ColumnName):
+    ISD_Monthly_means, MERRA_2_Monthly_Means, num_points = monthlyMeans240(df,ISDColumnName, M2ColumnName)
+    days_list = DaysInMonth(MERRA_2_Monthly_Means)
+    print(ISD_Monthly_means)
+    # print(days_list)
+    # ISD_Monthly_means[ISDColumnName] = ISD_Monthly_means[ISDColumnName]*60*60*24*days_list
+    # MERRA_2_Monthly_Means[M2ColumnName] = MERRA_2_Monthly_Means[M2ColumnName]*60*60*24*days_list
+    # print(num_points.head(20)) #year month Speed_ISD, where Speed_ISD is number of points in the month
     #sanity check
     '''https://www.w3schools.com/python/python_datetime.asp'''
     MERRA_2_Monthly_Means['DATE'] = MERRA_2_Monthly_Means['year']
     ISD_Monthly_means['DATE'] = ISD_Monthly_means['year']
+    Source_Value = df['source_used'][0]
 
     for i in range(0, len(MERRA_2_Monthly_Means)):
         MERRA_2_Monthly_Means['DATE'][i] = datetime.datetime(MERRA_2_Monthly_Means['year'][i],MERRA_2_Monthly_Means['month'][i],15)
         ISD_Monthly_means['DATE'][i] = datetime.datetime(ISD_Monthly_means['year'][i],ISD_Monthly_means['month'][i],15)
 
     #plot M2 original
-    RecalculatedMonthlyMeansM2Location = ''
-    M2_original_monthly_means = pd.read_csv(RecalculatedMonthlyMeansM2Location+str(station_ID)+'.csv')
-
-    fig,ax = plt.subplots(figsize = (24,12))
-    plt.plot(ISD_Monthly_means['DATE'],ISD_Monthly_means['Speed_ISD'], label = "ISD Measurments", linewidth = 12)
-    plt.plot(MERRA_2_Monthly_Means['DATE'], MERRA_2_Monthly_Means[''], label = 'MERRA-2 data (time-coordinated values)', linewidth = 12)
+    # RecalculatedMonthlyMeansM2Location = ''
+    # M2_original_monthly_means = pd.read_csv(RecalculatedMonthlyMeansM2Location+str(station_ID)+'.csv')
+    # print('Days in months')
+    # print(ISD_Monthly_means['DATE'].dt.daysinmonth)
+    fig,ax = plt.subplots(figsize = (12,6))
+    plt.plot(ISD_Monthly_means['DATE'],ISD_Monthly_means[ISDColumnName], label = "ISD Measurements", linewidth = 8)
+    plt.plot(MERRA_2_Monthly_Means['DATE'], MERRA_2_Monthly_Means[M2ColumnName], label = 'MERRA-2 data (time-coordinated values)', linewidth = 8)
     dates = pd.date_range('2001-01-01','2020-12-31',freq = 'MS')
-    plt.plot(dates, M2_original_monthly_means['w10'], label = 'Original MERRA-2 data (all values)', linewidth = 12)
+    # plt.plot(dates, M2_original_monthly_means['w10'], label = 'Original MERRA-2 data (all values)', linewidth = 12)
 
     #trendlines
-    slope_ISD, intercept_ISD = np.polyfit(np.arange(0,len(ISD_Monthly_means['DATE']),1), ISD_Monthly_means['Speed_ISD'],1)
-    slope_M, intercept_M = np.polyfit(np.arange(0,len(MERRA_2_Monthly_Means['DATE']),1), MERRA_2_Monthly_Means[''],1)
+    slope_ISD, intercept_ISD = np.polyfit(np.arange(0,len(ISD_Monthly_means['DATE']),1), ISD_Monthly_means[ISDColumnName],1)
+    slope_M, intercept_M = np.polyfit(np.arange(0,len(MERRA_2_Monthly_Means['DATE']),1), MERRA_2_Monthly_Means[M2ColumnName],1)
 
     line_isd = [slope_ISD * i + intercept_ISD for i in np.arange(0,len(ISD_Monthly_means['DATE']),1)]
     line_M = [slope_M * i + intercept_M for i in  np.arange(0,len(MERRA_2_Monthly_Means['DATE']),1)]
 
-    correlation_matrix_isd = np.corrcoef(ISD_Monthly_means['Speed_ISD'], line_isd)
+    correlation_matrix_isd = np.corrcoef(ISD_Monthly_means[ISDColumnName], line_isd)
     corr_isd = correlation_matrix_isd[0,1]
     R2_isd = corr_isd**2
-    correlation_matrix_M = np.corrcoef(MERRA_2_Monthly_Means[''], line_M)
+    correlation_matrix_M = np.corrcoef(MERRA_2_Monthly_Means[M2ColumnName], line_M)
     corr_M = correlation_matrix_M[0,1]
     R2_M = corr_M**2
 
-    plt.plot(ISD_Monthly_means['DATE'], line_isd, label = 'ISD trend ' + str(np.round(slope_ISD,5)) + ' R^2: ' +str(round(R2_isd,3)))
-    plt.plot(MERRA_2_Monthly_Means['DATE'], line_M, label = 'MERRA-2 trend' + str(np.round(slope_M,5))+ ' R^2: ' +str(round(R2_M,3)))
+    #Pearson Correlation Coefficient - returns value between -1 and 1. r = (sum of (x-mx)(y-my))/(sqrt(sum of (x-xm)^2 (y-my)^2))
+    # pcc = scipy.stats.pearsonr(ISD_Monthly_means[ISDColumnName].dropna(), MERRA_2_Monthly_Means[M2ColumnName].dropna())
+
+    #trendline plot
+    # plt.plot(ISD_Monthly_means['DATE'], line_isd, label = 'ISD trend ' + str(np.round(slope_ISD,5)) + ' $R^2$: ' +str(round(R2_isd,3)))
+    # plt.plot(MERRA_2_Monthly_Means['DATE'], line_M, label = 'MERRA-2 trend ' + str(np.round(slope_M,5))+ ' $R^2$: ' +str(round(R2_M,3)))
 
     #calculate the Mean Absolute Error (MAE)
     #sum of absolute errors divided by sample size
@@ -228,16 +266,35 @@ def allYearsPlot(df, station_ID):
     sum_abs_errors = sum(absolute_errors)
     MAE = sum_abs_errors/len(line_M)
 
-    plt.legend(fontsize = 25)
-    plt.xlabel('Time', fontsize = 35)
-    plt.ylabel('Monthly Average Wind Speeds [m/s]', fontsize = 35)
-    plt.xticks(fontsize = 20)
-    plt.yticks(fontsize = 20)
-    plt.ylim(0,8)
+    # plt.text(ISD_Monthly_means['DATE'][0], 7.5, np.round(pcc,3))
+    plt.legend(fontsize = 16)
+    plt.xlabel('Time [m]', fontsize = 16)
 
-    plt.title(str(station_ID) + ' All Monthly Averages, ' + str(round(MAE,3)) + 'MAE [m/s]', fontsize = 40)
+    plt.ylabel('Monthly Average [m/s]', fontsize = 16)
+    # plt.ylabel('Monthly Average [$kg/m^2/month$]', fontsize = 16)
+
+    plt.xticks(fontsize = 12)
+    plt.yticks(fontsize = 12)
+
+    # plt.ylim(0,8)
+    ax.yaxis.offsetText.set_fontsize(18)
+    # plt.ylim(0,1.15*max(max(MERRA_2_Monthly_Means[M2ColumnName]),max(ISD_Monthly_means[ISDColumnName])))
+    plt.ylim(0, 0.015)
+    # plt.title(str(station_ID) + ' All Monthly Averages, ' + str(format(MAE, '0.3f')) + ' MAE [m/s]', fontsize = 18)
+    # plt.title(str(station_ID) + ' All Monthly Averages, ' + str(format(MAE, '0.3E')) + ' MAE [m/s], ' + str(np.round(pcc[0],3)) + ' PCC', fontsize = 18)
+    plt.title(str(station_ID) + ' All Monthly Averages' , fontsize = 18)
+
+    # plt.title(str(station_ID) + ' All Monthly Averages, \n Source Function at this Location: '+ str(np.round(Source_Value,3)), fontsize = 40)
+    
+    #plot number of measurements in each month 
+    # ax2 = ax.twinx()
+    # ax2.set_ylim(0,1000)
+    # ax1.bar(x = np.arange(1,31,1) - .25, height = barValues, width = .5, label = 'Difference [ISD - MERRA-2 Recalculated] \n 20-Year Average $kg/m^2$', color = 'orange', alpha = .85)
+    # for j in range(0, len(ISD_Monthly_means[ISDColumnName])):
+    # ax2.bar(x = ISD_Monthly_means['DATE'], height = num_points[ISDColumnName], color="pink", width = 30, label = 'number of measurments in each month', alpha = .3)    
+    # ax2.axhline(y=720, alpha=0.3, color = 'red')  
     SaveDirectoryAll = '/Users/emily/Documents/UMBC/Dr_LimaLab/MERRA2VsISD_YearsTimeSeries/'
-    plt.savefig(SaveDirectoryAll  + str(station_ID) +'_timeCorrelated' + '20year_10meter_allTime_with_trendline_averageMagnitude'+str(date.today())+'.png', dpi = 300)
+    plt.savefig(SaveDirectoryAll  + str(station_ID) +'_timeCorrelated_TOPO_20year_SameScale'+str(date.today())+str(ISDColumnName)+'.png', dpi = 600)
     plt.close()
     # plt.show()
 
@@ -675,6 +732,8 @@ def combineSubHourly(df):
     df['DATE'] = pd.to_datetime(df['DATE'])
     new_df['DATE'] = df.groupby((df['hour'].shift() != df['hour']).cumsum())['DATE'].agg(pd.Series.mean)
     new_df['hour'] = df.groupby((df['hour'].shift() != df['hour']).cumsum())['hour'].mean(numeric_only=True)
+    new_df['month'] = df.groupby((df['month'].shift() != df['month']).cumsum())['month'].mean(numeric_only=True)
+    new_df['year'] = df.groupby((df['year'].shift() != df['year']).cumsum())['year'].mean(numeric_only=True)
 
     return new_df
 
@@ -802,6 +861,27 @@ def Depricatedhistogram(df,station_ID,begin_date,end_date,mylong,mylat,diurnalTe
     plt.close()
     return
 
+def Unmodified_threshold():
+    #U_t for each box, uncorrected by GWETTOP
+    U_t = []
+    Radius = [.73, 1.4, 2.4, 4.5, 8]
+    s_p = [0.1, 0.25, 0.25, 0.25, 0.25]
+    densities = [2650,2650,2650,2650,2650]
+    density_air = 1.250 #kg/m^3
+    g = 9.81 #m/s^2
+
+    for i in range(0,len(Radius)):
+        r = Radius[i]
+        R = r * 10**-6 #m
+        # sp = s_p[i]
+        density_particle = densities[i]
+        temp1 = .13*np.sqrt((density_particle*g*2*R)/density_air)
+        temp2 = np.sqrt(1+6e-7/(density_particle*g*(2*R)**2.5))
+        temp3 = np.sqrt(1.928*(((1331*(100*(2*R))**1.56)+.38)**.092)-1)
+        U_t0 = (temp1*temp2)/temp3
+        U_t.append(U_t0)
+
+    return U_t
 '''WIND SPEED histogram maker - takes a
 df of the co-located data,
 a string of the stationID,
@@ -812,7 +892,7 @@ saves histogram to Histogram outputs location '''
 def Histogram_AllTime(df,station_ID, diurnalText):
     WhereToSave = '/Users/emily/Documents/UMBC/Dr_LimaLab/HistogramsISDvsMERRA2/'
     df = combineSubHourly(df)
-    plt.figure(figsize = (12,5))
+    plt.figure(figsize = (17,7))
     df['Speed_ISD'].hist(alpha = 0.5, bins = 10, label = 'ISD Wind Speed', range = [0,12])
     df['OG_winds_correct_box'].hist(alpha = 0.5, bins = 10, label = 'MERRA-2 Wind Speed', range = [0,12])
     '''Threshold Velocity for size bins - TODO: add back vertical lines for the average threshold for each size bin'''
@@ -820,21 +900,22 @@ def Histogram_AllTime(df,station_ID, diurnalText):
     # U_t, df = U_tVector(df,begin_date,end_date, mylat, mylong)
     # print(U_t.keys())
     # print(U_t.head())
-    # colors = ['black','crimson','chartreuse','cyan','orchid']
-    # r = [0.73, 1.4, 2.4, 4.5, 8] #microns - size bins of MERRA-2
+    colors = ['black','crimson','chartreuse','cyan','orchid']
+    r = [0.73, 1.4, 2.4, 4.5, 8] #microns - size bins of MERRA-2
     # ut_keys = 'u_t at 0.73'
-    # plt.axvline(np.nanmean(U_t['0.73']), label = 'd = ' + str(np.round(2*r[0],3)) + 'um , U_t = ' + str(np.round(np.nanmean(U_t['0.73']),3)) + ' m/s', c = colors[0])
-    # plt.axvline(np.nanmean(U_t['1.4']), label = 'd = ' + str(np.round(2*r[1],3)) + 'um , U_t = ' + str(np.round(np.nanmean(U_t['1.4']),3)) + ' m/s', c = colors[1])
-    # plt.axvline(np.nanmean(U_t['2.4']), label = 'd = ' + str(np.round(2*r[2],3)) + 'um , U_t = ' + str(np.round(np.nanmean(U_t['2.4']),3)) + ' m/s', c = colors[2])
-    # plt.axvline(np.nanmean(U_t['4.5']), label = 'd = ' + str(np.round(2*r[3],3)) + 'um , U_t = ' + str(np.round(np.nanmean(U_t['4.5']),3)) + ' m/s', c = colors[3])
-    # plt.axvline(np.nanmean(U_t['8']), label = 'd = ' + str(np.round(2*r[4],3)) + 'um , U_t = ' + str(np.round(np.nanmean(U_t['8']),3)) + ' m/s', c = colors[4])
-    plt.title(str(station_ID) + ' 2001-2020 10m Wind Speed ' + diurnalText, fontsize = 18)
-    plt.xticks(fontsize = 16)
-    plt.yticks(fontsize = 16)
-    plt.ylabel('Number of occurrences')
-    plt.xlabel('Wind Speed [m/s]')
-    plt.legend()
-    plt.savefig(WhereToSave + str(station_ID) + diurnalText +'.png', dpi = 300)
+    U_t = Unmodified_threshold()
+    plt.axvline(np.nanmean(U_t[0]), label = 'D = ' + str(np.round(2*r[0],3)) + 'um , u_t = ' + str(np.round(np.nanmean(U_t[0]),3)) + ' m/s', c = colors[0])
+    plt.axvline(np.nanmean(U_t[1]), label = 'D = ' + str(np.round(2*r[1],3)) + 'um , u_t = ' + str(np.round(np.nanmean(U_t[1]),3)) + ' m/s', c = colors[1])
+    plt.axvline(np.nanmean(U_t[2]), label = 'D = ' + str(np.round(2*r[2],3)) + 'um , u_t = ' + str(np.round(np.nanmean(U_t[2]),3)) + ' m/s', c = colors[2])
+    plt.axvline(np.nanmean(U_t[3]), label = 'D = ' + str(np.round(2*r[3],3)) + 'um , u_t = ' + str(np.round(np.nanmean(U_t[3]),3)) + ' m/s', c = colors[3])
+    plt.axvline(np.nanmean(U_t[4]), label = 'D = ' + str(np.round(2*r[4],3)) + 'um , u_t = ' + str(np.round(np.nanmean(U_t[4]),3)) + ' m/s', c = colors[4])
+    plt.title(str(station_ID) + ' 2001-2020 10m Wind Speed ' + diurnalText, fontsize = 25)
+    plt.xticks(fontsize = 20)
+    plt.yticks(fontsize = 20)
+    plt.ylabel('Number of occurrences', fontsize = 20)
+    plt.xlabel('Wind Speed [m/s]', fontsize = 20)
+    plt.legend(fontsize = 18)
+    plt.savefig(WhereToSave + str(station_ID) + diurnalText +str(datetime.date.today()) +'.png', dpi = 600)
     plt.close()
     return
 '''Depricated '''
@@ -849,17 +930,14 @@ takes top of directory where the colocated station data is
 and the stationID as a string
 
 Saves figure back to the same directory the colocated station data is'''
-def AverageScatter(directory, station_ID):
-    station_folder = station_ID + '_DATA'
-    df = ReadData(directory,station_ID)
-    df = combineSubHourly(df)
+def AverageScatter(df, station_ID):
     df = Seasons(df) #provides seasonal labels for each measurement/value row
     df['Season'] = df['Season']
     plt.figure(figsize = (12,12))
     SeasonMeans_ISD = df.groupby( by = ['Season', 'year'])['Speed_ISD'].mean()
     SeasonSTD_ISD = df.groupby(by = ['Season', 'year'])['Speed_ISD'].std()
-    SeasonMeans_MERRA2 = df.groupby( by = ['Season', 'year'])[''].mean()
-    SeasonSTD_MERRA2 = df.groupby(by = ['Season', 'year'])[''].std()
+    SeasonMeans_MERRA2 = df.groupby( by = ['Season', 'year'])['OG_winds_correct_box'].mean()
+    SeasonSTD_MERRA2 = df.groupby(by = ['Season', 'year'])['OG_winds_correct_box'].std()
     plt.scatter(SeasonMeans_ISD['Winter'],SeasonMeans_MERRA2['Winter'], label = 'Winter', marker = 'P', s = 100)
     plt.scatter(SeasonMeans_ISD['Summer'],SeasonMeans_MERRA2['Summer'], label = 'Summer', marker = 'p', s = 100)
     plt.scatter(SeasonMeans_ISD['Spring'],SeasonMeans_MERRA2['Spring'], label = 'Spring', marker = 'x', s = 100)
@@ -871,34 +949,41 @@ def AverageScatter(directory, station_ID):
     kmeans_model = KMeans(n_clusters = K).fit(np.array(list(zip(SeasonMeans_ISD['Winter'],SeasonMeans_MERRA2['Winter']))))
     centers = np.array(kmeans_model.cluster_centers_)
     distances.append(np.abs(centers[:,0]-centers[:,1])/(np.sqrt(2)))
-    plt.scatter(centers[:,0], centers[:,1], label = 'Winter Centroid ' + str(distances[0]), marker = 's', s = 100, c = 'blue', edgecolors = 'black')
-    #to do: Find the distance between the centroids and the 1:1 line
+    plt.scatter(centers[:,0], centers[:,1], label = 'Winter Centroid ' + str(np.round(distances[0],3)), marker = 's', s = 100, c = 'blue', edgecolors = 'black')
+    plt.errorbar(centers[:,0], centers[:,1],  yerr = np.std(SeasonMeans_MERRA2['Winter']), xerr = np.std(SeasonMeans_ISD['Winter']), fmt="o")
+
     #summer
     kmeans_model = KMeans(n_clusters = K).fit(np.array(list(zip(SeasonMeans_ISD['Summer'],SeasonMeans_MERRA2['Summer']))))
     centers1 = np.array(kmeans_model.cluster_centers_)
     distances.append(np.abs(centers1[:,0]-centers1[:,1])/(np.sqrt(2)))
-    plt.scatter(centers1[:,0], centers1[:,1], label = 'Summer Centroid ' + str(distances[1]), marker = 's', s = 100, c = 'orange', edgecolors = 'black')
+    plt.scatter(centers1[:,0], centers1[:,1],label = 'Summer Centroid ' + str(np.round(distances[1],3)), marker = 's', s = 100, c = 'orange', edgecolors = 'black')
+    plt.errorbar(centers1[:,0], centers1[:,1],  yerr = np.std(SeasonMeans_MERRA2['Summer']), xerr = np.std(SeasonMeans_ISD['Summer']), fmt="o")
+
     #spring
     kmeans_model = KMeans(n_clusters = K).fit(np.array(list(zip(SeasonMeans_ISD['Spring'],SeasonMeans_MERRA2['Spring']))))
     centers2 = np.array(kmeans_model.cluster_centers_)
     distances.append(np.abs(centers2[:,0]-centers2[:,1])/(np.sqrt(2)))
-    plt.scatter(centers2[:,0], centers2[:,1], label = 'Spring Centroid ' + str(distances[2]), marker = 's', s = 100, c = 'green', edgecolors = 'black')
+    plt.scatter(centers2[:,0], centers2[:,1], label = 'Spring Centroid ' + str(np.round(distances[2],3)), marker = 's', s = 100, c = 'green', edgecolors = 'black')
+    plt.errorbar(centers2[:,0], centers2[:,1],  yerr = np.std(SeasonMeans_MERRA2['Spring']), xerr = np.std(SeasonMeans_ISD['Spring']), fmt="o")
+
     #fall
-    kmeans_model = KMeans(n_clusters = K).fit(np.array(list(zip(SeasonMeans_ISD['Fall'],SeasonMeans_MERRA2['Fall']))))
+    kmeans_model = KMeans(n_clusters = K).fit(np.array(list(zip(SeasonMeans_ISD['Fall'], SeasonMeans_MERRA2['Fall']))))
     centers3 = np.array(kmeans_model.cluster_centers_)
     distances.append(np.abs(centers3[:,0]-centers3[:,1])/(np.sqrt(2)))
-    plt.scatter(centers3[:,0], centers3[:,1], label = 'Fall Centroid ' + str(distances[3]), marker = 's', s = 100,c = 'red', edgecolors = 'black')
-
+    plt.scatter(centers3[:,0], centers3[:,1], label = 'Fall Centroid ' + str(np.round(distances[3],3)), marker = 's', s = 100,c = 'red', edgecolors = 'black')
+    plt.errorbar(centers3[:,0], centers3[:,1],  yerr = np.std(SeasonMeans_MERRA2['Fall']), xerr = np.std(SeasonMeans_ISD['Fall']), fmt="o")
+    
     xx = np.linspace(1,7,100)
     plt.plot(xx,xx, label = '1:1')
-
     plt.ylabel('MERRA-2 Average[m/s]', fontsize = 30)
     plt.xlabel('ISD Average[m/s]', fontsize = 30)
-    plt.title('Modeled (MERRA-2) vs. Measured (ISD) Surface \n Wind Speed for station #' + station_ID, fontsize = 35)
-    plt.legend(facecolor = '0.75', fontsize = 17)
-    plt.xticks(fontsize = 20)
-    plt.yticks(fontsize = 20)
-    plt.savefig(directory + '/' + station_folder + 'MERRA_2vsISD_seasonal.png', dpi = 200)
+    plt.title('Modeled (MERRA-2) vs. Measured (ISD) Surface \n Wind Speed for station #' + str(station_ID), fontsize = 35)
+    plt.legend(facecolor = '0.75', fontsize = 18)
+    plt.xticks(fontsize = 22)
+    plt.yticks(fontsize = 22)
+    # plt.show()
+    plt.savefig('/Users/emily/Documents/UMBC/Dr_LimaLab/SeasonalScatterPlots/' +str(station_ID)+ 'MERRA_2vsISD_seasonal_boxUpdate.png', dpi = 600)
+    plt.close()
     return
 '''Takes a data frame of colocated data and returns two data frames, one with only local
 daylight values, and the second with only local night time valeus '''
@@ -910,6 +995,98 @@ def diurnal_df(df):
     nighttime_df = df[(df['DATE'].dt.hour <= daytime_on) | (df['DATE'].dt.hour >= daytime_off)]
     return daytime_df, nighttime_df
 
+#makes the bubble plot
+def SeasonMapPlot(winterAVG,summerAVG,springAVG,fallAVG,winterSTD,SummerSTD,SpringSTD,FallSTD,lat,long,titleString, color, min,max):
+    crs = ccrs.PlateCarree()
+    fig, ax = plt.subplots(2,2, subplot_kw = {'projection': crs}, figsize = (13,12))
+    numbers = np.arange(1,31,1)
+    '''middle east extent'''
+    ax[0,0].set_extent([30, 60, 10, 40], ccrs.PlateCarree())
+    '''southwest extent'''
+    # ax[0,0].set_extent([-126, -93, 25, 50], ccrs.PlateCarree())
+    # ax.add_feature(cfeature.BORDERS, linewidth=0.5, edgecolor='black')
+    # ax.add_feature(cfeature.STATES, linewidth=0.3, edgecolor='black')
+    # ax.add_feature(cf.BOARDERS)
+    # ax[0,0].states(resolution = '10m')
+    MasterDf = pd.read_csv('/Users/emily/Documents/UMBC/Dr_LimaLab/ISDWind/MiddleEast/10m_confirmed_stations.csv')
+    ax[0,0].coastlines(resolution='10m')
+    winterScatter = ax[0,0].scatter(np.array(long), np.array(lat), s = winterSTD*100, c = winterAVG, cmap = color, vmin = min, vmax = max, alpha = .8, edgecolors = 'black')
+    for i in range(len(MasterDf)):
+        x = MasterDf['Long'][i]
+        y = MasterDf['Lat'][i]
+        ax[0,0].text(x * (1 + 0.01), y * (1 + 0.01) , i+1, fontsize=10, c = 'black')
+    ax[0,0].title.set_text(titleString+' Winter 10m Wind Speed')
+    # AVGlegend = ax[0,0].legend(*winterScatter.legend_elements(num = 6), loc = 'lower left', title = 'Average 10m \nWind Speed [m/s]', bbox_to_anchor = (-.35,-.2), frameon = False)
+    # ax[0,0].add_artist(AVGlegend)
+    # extraScatter = ax[0,0].scatter(np.array(np.append(long,long)), np.array(np.append(lat,lat)), s = np.append(winterSTD*100,SummerSTD*100), c = np.append(winterAVG, summerAVG), cmap = color, vmin = min, vmax = max, alpha = .7)
+    handles, labels = winterScatter.legend_elements(prop = 'sizes', num = 6)
+    labels = np.array(labels)
+    labels = [int(''.join(char for char in string if char.isdigit())) for string in labels]
+    labels = [labels/100 for labels in labels]
+    # STDlegend = ax[0,0].legend(handles, labels, loc = 'upper right', title = 'STD [m/s]', bbox_to_anchor = (0,-.3))
+
+    ax[0,1].set_extent([30, 60, 10, 40], ccrs.PlateCarree())
+    # ax[0,1].states(resolution = '10m')
+    ax[0,1].coastlines(resolution='10m')
+
+    SpringScatter = ax[0,1].scatter(np.array(long), np.array(lat), s = SpringSTD*100, c = springAVG, cmap = color, vmin = min, vmax = max, alpha = .7, edgecolors = 'black')
+    for i in range(len(MasterDf)):
+        x = MasterDf['Long'][i]
+        y = MasterDf['Lat'][i]
+        ax[0,1].text(x * (1 + 0.01), y * (1 + 0.01) , i+1, fontsize=10, c = 'black')
+    ax[0,1].title.set_text(titleString+' Spring 10m Wind Speed')
+    # AVGlegend = ax[0,1].legend(*SpringScatter.legend_elements(num = 6), loc = 'lower left', title = 'Average 10m \nWind Speed [m/s]', bbox_to_anchor = (-.25,0))
+    # ax[0,1].add_artist(AVGlegend)
+    handles, labels = SpringScatter.legend_elements(prop = 'sizes', num = 6)
+    labels = np.array(labels)
+    labels = [int(''.join(char for char in string if char.isdigit())) for string in labels]
+    labels = [labels/100 for labels in labels]
+    # STDlegend = ax[0,1].legend(handles, labels, loc = 'upper right', title = 'STD [m/s]', bbox_to_anchor = (1.15,1))
+
+    ax[1,0].set_extent([30, 60, 10, 40], ccrs.PlateCarree())
+    ax[1,0].coastlines(resolution='10m')
+
+    SummerScatter = ax[1,0].scatter(np.array(long), np.array(lat), s = SummerSTD*100, c = summerAVG, cmap = color, vmin = min, vmax = max, alpha = .7, edgecolors = 'black')
+    for i in range(len(MasterDf)):
+        x = MasterDf['Long'][i]
+        y = MasterDf['Lat'][i]
+        ax[1,0].text(x * (1 + 0.01), y * (1 + 0.01) , i+1, fontsize=10, c = 'black')
+    ax[1,0].title.set_text(titleString+' Summer 10m Wind Speed')
+    # AVGlegend = ax[1,0].legend(*SummerScatter.legend_elements(num = 6), loc = 'lower left', title = 'Average 10m \nWind Speed [m/s]', bbox_to_anchor = (-.25,0))
+    # ax[1,0].add_artist(AVGlegend)
+    handles, labels = SummerScatter.legend_elements(prop = 'sizes', num = 6)
+    labels = np.array(labels)
+    labels = [int(''.join(char for char in string if char.isdigit())) for string in labels]
+    labels = [labels/100 for labels in labels]
+    STDlegend = ax[1,0].legend(handles, labels, loc = 'upper right', title = 'STD [m/s]', bbox_to_anchor = (-.05,1), frameon = False)
+
+    ax[1,1].set_extent([30, 60, 10, 40], ccrs.PlateCarree())
+    ax[1,1].coastlines(resolution='10m')
+
+    FallScatter = ax[1,1].scatter(np.array(long), np.array(lat), s = FallSTD*100, c = fallAVG, cmap = color, vmin = min, vmax = max, alpha = .7, edgecolors = 'black')
+    for i in range(len(MasterDf)):
+        x = MasterDf['Long'][i]
+        y = MasterDf['Lat'][i]
+        ax[1,1].text(x * (1 + 0.01), y * (1 + 0.01) , i+1, fontsize=10, c = 'black')
+    ax[1,1].title.set_text(titleString+' Fall 10m Wind Speed')
+    AVGlegend = ax[1,1].legend(*winterScatter.legend_elements(num = 8), loc = 'lower left', title = 'Seasonal Average 10m \nWind Speed difference \n[m/s] (ISD - MERRA-2)', bbox_to_anchor = (-1.75,1.2), frameon = False)
+    ax[1,1].add_artist(AVGlegend)
+    '''
+    handles, labels = winterScatter.legend_elements(prop = 'sizes', num = 6)
+    labels = np.array(labels)
+    labels = [int(''.join(char for char in string if char.isdigit())) for string in labels]
+    labels = [labels/100 for labels in labels]
+    '''
+    # STDlegend = ax[1,1].legend(handles, labels, loc = 'upper right', title = 'STD [m/s]', bbox_to_anchor = (1.15,1))
+    # lat = np.array(lat)
+    # long = np.array(long)
+    # for i, ann in enumerate(station_IDS):
+    #     plt.annotate(ann, long[i], lat[i])
+    # plt.show()
+    # print(os.getcwd())
+    # plt.show()
+    plt.savefig('TimeCorrelatedBubblePlot_Outline_' + titleString +str(date.today()) +'.png', dpi = 300)
+    return
 '''takes in a
  df which should be filtered to what you want to plot - for example seasonally filtered,
  colorName is the name of the column that you want to use for the color of the bubbles
@@ -920,7 +1097,7 @@ def diurnal_df(df):
  Only makes ONE bubble plot, must call multiple times for multiple plots
  returns nothing
  '''
-def GeneralBubblePlot(df, colorName ,sizeName, titleString):
+def GeneralBubblePlot(df, titleString, color, size):
     #set up the map
     crs = ccrs.PlateCarree()
     fig, ax = plt.subplots(1,1, subplot_kw = {'projection': crs}, figsize = (9,9))
@@ -930,7 +1107,10 @@ def GeneralBubblePlot(df, colorName ,sizeName, titleString):
     # df['MERRA-2_emissions_calculated']  = df['MERRA-2 emissions_calculated']*(10**9)
     # df['ISD_emissions'] = df['ISD total']*(10**9)
 
-    Scatter = ax.scatter(np.array(df['longitude']), np.array(df['latitude']), c = (), vmin= -8, vmax = 8, s = df[str(sizeName)].fillna(0), cmap = 'RdBu', alpha = .7, edgecolors = 'black')
+    #F-test:
+    #https://www.cuemath.com/data/f-test/#:~:text=An%20F%20test%20is%20a,follows%20a%20Student%20t%2Ddistribution
+
+    Scatter = ax.scatter(np.array(df['Long']), np.array(df['Lat']), c = (df['OG_winds_correct_box'] - df['Speed_ISD']), vmin= -8, vmax = 8, s = np.var(df['Speed_ISD'])/np.var(df['OG_winds_correct_box']), cmap = 'RdBu', alpha = .7, edgecolors = 'black')
     ax.title.set_text(titleString)
 
     color_legend = ax.legend(*Scatter.legend_elements(), title = 'Difference in Emissions' + "\n" +"[kg/m^2s] x10^-9", bbox_to_anchor = (1.05,.9), facecolor='white', framealpha=1)
@@ -941,29 +1121,46 @@ def GeneralBubblePlot(df, colorName ,sizeName, titleString):
 
     numbers = np.arange(1,31,1)
     for i in range(len(numbers)):
-        x = df['longitude'][i]
-        y = df['latitude'][i]
+        x = df['LONGITUDE'][i]
+        y = df['LATITUDE'][i]
         plt.text(x * (1 + 0.01), y * (1 + 0.01) , numbers[i], fontsize=12, c = 'black')
-    plt.savefig('ISDWind/MiddleEast/BubblePlot_outputs/2001-2020/' + titleString + '.png', dpi = 300)
+    # plt.savefig('ISDWind/MiddleEast/BubblePlot_outputs/2001-2020/' + titleString + '.png', dpi = 300)
+    plt.show()
     plt.close()
 
     return
 
-def MonthlyMeans12(df, stationID):
-    MERRA_2_Means = df.groupby(by = ['month'])[''].mean()
-    ISD_Means = df.groupby(by = ['month'])['Speed_ISD'].mean()
-    MERRA_2_Means = MERRA_2_Hourly_Means.reset_index()
-    ISD_Means = ISD_Hourly_Means.reset_index()
+def MonthlyMeans12(df, stationID, ISDColumnName, M2ColumnName, titleString):
+    MERRA_2_Means = df.groupby(by = ['month'])[M2ColumnName].mean()
+    ISD_Means = df.groupby(by = ['month'])[ISDColumnName].mean()
+    MERRA_2_Means = MERRA_2_Means.reset_index()
+    ISD_Means = ISD_Means.reset_index()
+    months = np.arange(1,13,1)
+    monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'June', 'July', 'Aug', 'Sept', 'Oct', 'Nov', 'Dec']
+    
+    y_err1 = ISD_Means[ISDColumnName].std()
+    y_err2 = MERRA_2_Means[M2ColumnName].std()
 
-    years = np.array(2001,2020,1)
-    plt.plot(years,ISD_Means, label = 'ISD Measurements')
-    plt.plot(years, MERRA_2_Means, label = 'MERRA-2 data')
-    plt.xlabel('Time')
-    plt.ylabel('Monthly Average Wind Speed [m/2]')
-    plt.title(str(stationID) + 'Monthly Averages')
-    plt.legend()
-    plt.savefig('/Users/emily/Documents/UMBC/Dr_LimaLab/MERRA2VsISD_MonthlyTimeSeries/' + str(stationID))
-
+    # std_ISD = (df.groupby(by = ['month'])[ISDColumnName].std())/2
+    # STD_M2 = (df.groupby(by = ['month'])[M2ColumnName].std())/2
+    # print(ISD_Means[ISDColumnName][1:12] + std_ISD[0:11])
+    fig,ax = plt.subplots(1,1, figsize = (12,6))
+    plt.plot(months,ISD_Means[ISDColumnName] , label = 'ISD Measurements', linewidth = 8)
+    plt.plot(months, MERRA_2_Means[M2ColumnName], label = 'MERRA-2 Data', linewidth = 8)
+    plt.fill_between(months,ISD_Means[ISDColumnName] - y_err1, ISD_Means[ISDColumnName] + y_err1 , alpha = .2)
+    plt.fill_between(months,MERRA_2_Means[M2ColumnName] - y_err2, MERRA_2_Means[M2ColumnName] + y_err2 , alpha = .2)
+   
+    plt.xticks(months, labels = monthNames, fontsize = 12)
+    plt.xlabel('Time', fontsize = 16)
+    plt.ylabel('Monthly Average ' + titleString, fontsize = 16)
+    plt.yticks(fontsize = 12)
+    plt.title(str(stationID) + ' Monthly Average ' + titleString, fontsize = 18)
+    plt.legend(fontsize = 16)
+    # plt.ylim(0,8)
+    plt.ylim(0,1.15*max(max(MERRA_2_Means[M2ColumnName]),max(ISD_Means[ISDColumnName])))
+    # plt.show()
+    plt.savefig('/Users/emily/Documents/UMBC/Dr_LimaLab/MERRA2VsISD_MonthlyTimeSeries/' + str(date.today()) +  str(stationID) + titleString, dpi = 600)
+    plt.close()
     return
 '''Takes in a
 dataframe
@@ -1014,79 +1211,238 @@ def DepricatedBlockPlot(d, userText, folder, col1, col2):
     return
 '''Takes no arguments and makes the dust emission difference Block plots and saves '''
 
-# def BlockPlot():
-#     directory = ''
-#     list_of_stations = ''
-#     MasterList = pd.read_csv(list_of_stations)
-#     StationIDs = MasterList['Station_ID']
-#     years = np.arange(2001,2021)
-#     station_number = np.arange(1,31,1)
-#     leapYearDays = [365,365,365,366,365,365,365,366,365,365,365,366,365,365,365,366,365,365,365,366]
+def BlockPlot(directory, type):
+    # directory = ''
+    list_of_stations = '/Users/emily/Documents/UMBC/Dr_LimaLab/ISDWind/MiddleEast/10m_confirmed_stations.csv'
+    MasterList = pd.read_csv(list_of_stations)
+    stationIDs = MasterList['Station_ID']
+    myyears = np.arange(2001,2021)
+    station_number = np.arange(1,31,1)
+    leapYearDays = [365,365,365,366,365,365,365,366,365,365,365,366,365,365,365,366,365,365,365,366]
 
-#     blocks = '''numpy array of size number of years x number of stations '''
-#     row = 0
-#     for stationID in stationIDs:
-#         # df = ApplesToApples.ReadData(,)
-#         df = ApplesToApples.combineSubHourly()
-#         # ISDMeans = df.groupby(by = ['year'])[].mean()
-#         MERRA2Means = df.groupby(by = ['year'])[].mean()
-#         ISDMeans = ISDMeans.reset_index()
-#         MERRA2Means = MERRA2Means.reset_index()
-#         ISDMeans *= 60*60*24*leapYearDays
-#         MERRA2Means *= 60*60*24*leapYearDays
-#         blocks[row,:] = (ISDMeans - MERRA2Means)
-#         row += 1
-#     fig, ax = plt.subplots(figsize=(7,7))
-#     cmap = plt.cm.bwr
-#     cmap.set_bad(color = 'black')
-#     plt.imshow(d, cmap=cmap, vmin = -.15, vmax = .15)
-#     ax.set_yticks(np.arange(30))
-#     ax.set_yticklabels(station_number)
-#     ax.set_xticks(np.arange(20))
-#     ax.set_xticklabels(years, rotation = 45)
-#     plt.colorbar(label = 'kg/m\u00b2/yr') #https://www.geeksforgeeks.org/how-to-print-superscript-and-subscript-in-python/#
-#     plt.xlabel('Year')
-#     plt.ylabel('Station ID')
-#     plt.title('Dust Emission Difference using Topographic Source/n (Dust Emission Using ISD winds - Dust Emission Using MERRA2 winds)')
-#     plt.savefig(directory +str(datetime.date.today()))
+    blocks = np.empty(shape = (30,20)) #numpy array of size number of years x number of stations 
+    row = 0
+    for stationID in stationIDs:
+        # df = ApplesToApples.ReadData(,)
+        df = pd.read_csv(directory + str(stationID) + '_FAUCART.csv', low_memory=False)
+        # df = combineSubHourly(df)
+        ISDMeans = df.groupby(by = ['year'])['ISD_flux'].mean()
+        MERRA2Means = df.groupby(by = ['year'])['Recalculated_flux_correct_box'].mean()
+        ISDMeans = ISDMeans.reset_index()
+        MERRA2Means = MERRA2Means.reset_index()
+        # print(ISDMeans)
+        # print(MERRA2Means)
+        if len(ISDMeans) != 20:
+            missingYears = set(myyears).difference(ISDMeans['year'])
+            print(missingYears)
+            for missing in missingYears:
+                ISDMeans.loc[len(ISDMeans)] = [missing, np.nan]
+                MERRA2Means.loc[len(MERRA2Means)] = [missing, np.nan]
+            ISDMeans = ISDMeans.sort_values(by=['year'])
+            MERRA2Means = MERRA2Means.sort_values(by = ['year'])
+            # print(ISDMeans)
+            # print(MERRA2Means)
+            # missingYearIndex = 
+            # print(missingYearIndex)
+        ISDMeans = ISDMeans['ISD_flux']
+        MERRA2Means = MERRA2Means['Recalculated_flux_correct_box']
+        for i in range(0,len(MERRA2Means)):
+            ISDMeans[i] *= 60*60*24*leapYearDays[i]
+            MERRA2Means[i] *= 60*60*24*leapYearDays[i]
+        
+        if type == 'mass':
+            blocks[row,:] = (ISDMeans - MERRA2Means)
+        elif type == 'percent':
+           blocks[row,:] = ((ISDMeans - MERRA2Means)/MERRA2Means)*100
+        print(blocks)
+        row += 1
+    fig, ax = plt.subplots(figsize=(7,7))
+    cmap = plt.cm.bwr
+    cmap.set_bad(color = 'black')
+    plt.imshow(blocks, cmap=cmap, vmin = -.15, vmax = .15)
+    # plt.imshow(blocks, cmap = cmap, vmin = -200, vmax = 200)
+    ax.set_yticks(np.arange(30))
+    ax.set_yticklabels(station_number)
+    ax.set_xticks(np.arange(20))
+    ax.set_xticklabels(myyears, rotation = 45)
+    plt.colorbar(label = 'kg/m\u00b2/yr') #https://www.geeksforgeeks.org/how-to-print-superscript-and-subscript-in-python/#
+    # plt.colorbar(label = 'Percent Difference [%]') #https://www.geeksforgeeks.org/how-to-print-superscript-and-subscript-in-python/#
+    # plt.xlabel('Year')
+    plt.ylabel('Station ID')
+    # plt.title('Dust Emission Perrcent Difference \n (Using ISD winds - Using MERRA-2 winds)')
+    plt.title('Dust mass Emission Difference \n (Dust Emission Using ISD winds - Dust Emission Using MERRA2 winds)')
+    # plt.savefig(directory +str(datetime.date.today()), dpi = 300)
+    plt.show()
+    return
 
-#     return
+def DustImpactPlot(directory, filestring):
+    list_of_stations = '/Users/emily/Documents/UMBC/Dr_LimaLab/ISDWind/MiddleEast/10m_confirmed_stations.csv'
+    MasterList = pd.read_csv(list_of_stations)
+    StationIDs = MasterList['Station_ID']
+    # leapYearDays = [365,365,365,366,365,365,365,366,365,365,365,366,365,365,365,366,365,365,365,366]
 
-# def DustImpactPlot():
-#     directory = ''
-#     list_of_stations = ''
-#     MasterList = pd.read_csv(list_of_stations)
-#     StationIDs = MasterList['Station_ID']
-#     leapYearDays = [365,365,365,366,365,365,365,366,365,365,365,366,365,365,365,366,365,365,365,366]
+    barValues = [] #raw average difference between ISD and M2 emission values in kg/m^2
+    lineValues = [] #percent change to M2 emissions if ISD winds were used instead of M2
+    for StationID in StationIDs:
+        df = pd.read_csv(directory + str(StationID) + filestring, low_memory=False)
+        print(StationID)
+        ISDMean = np.nanmean(df['ISD_flux']) #kg/m^2/s
+        MERRA2Mean = np.nanmean(df['Recalculated_flux_correct_box']) #kg/m^2/s
+        ISDMean *= 60*60*24*365
+        MERRA2Mean *= 60*60*24*365
+        Difference = ISDMean - MERRA2Mean
+        barValues.append(Difference)
+        lineValues.append((np.nanmean(df['ISD_flux']) - np.nanmean(df['Recalculated_flux_correct_box']))/(np.nanmean(df['Recalculated_flux_correct_box']))*100)
+        #if ISD AND M2 original flux is 0 (like station 2) then lineValue will be NaN
+    
+    #if ISD AND M2 original flux is 0 (like station 2) then lineValue will be NaN
+    lineValues[1] = 0
+    # print(lineValues)
+    fig, ax1 = plt.subplots(figsize = (10,8))
+    ax2 = ax1.twinx()
+    ax1.set_ylim(-.15,.15)
+    ax2.set_ylim(-250,250)
+    ax1.bar(x = np.arange(1,31,1) - .25, height = barValues, width = .5, label = 'Difference [ISD - MERRA-2 Recalculated] \n 20-Year Average $kg/m^2/yr$', color = 'orange', alpha = .85)
+    ax2.bar(x = np.arange(1,31,1) + .25, height = lineValues, width = .5, label = 'Percent Change \n to MERRA-2 Recalculated Emissions', color = 'blue', alpha = .75)
+    
+    # ax2.spines['bottom'].set_position(('data', 0))
+    ax1.set_ylabel('Average Mass Difference [ISD - MERRA-2 Recalculated] $kg/m^2/yr$', color = 'orange', fontsize = 16)
+    ax2.set_ylabel('Percent Change to MERRA-2 Recalculated Emissions (%)', color = 'blue', fontsize = 16)
+    ax2.legend(loc='upper right')
+    ax1.legend(loc='upper left')
+    ax1.set_xlabel('Station Number')
+    ax1.xaxis.set_ticks(np.arange(1, 31, 1))
+    ax1.spines['bottom'].set_position(('data', 0))
+    plt.title('Dust Emission Impacts - 20 Year Average', fontsize = 20)
+    plt.show()
+    # plt.savefig(str(datetime.date.today()) + '20YearDustEmissionImpact_orangeBlue.png', dpi = 300)
+    return (barValues, lineValues)
 
-#     barValues = [] #raw average difference between ISD and M2 emission values in kg/m^2
-#     lineValues = [] #percent change to M2 emissions if ISD winds were used instead of M2
-#     for StationID in StationIDs:
-#         df = ApplesToApples.ReadData(,)
-#         df = ApplesToApples.combineSubHourly()
-#         ISDMean = df[''].mean()
-#         MERRA2Mean = df[].mean()
-#         ISDMean *= 60*60*24*7304
-#         MERRA2Mean *= 60*60*24*7304
-#         Difference = ISDMean - MERRA2Mean
-#         barValues.append(Difference)
-#         lineValues.append(Difference/((df['given OG Emissions M2']/10000)/20))
+def PercentChangeMap(percentChange):
+    crs = ccrs.PlateCarree()
+    fig, ax = plt.subplots(1,1, subplot_kw = {'projection': crs}, figsize = (12,12))
+    S = nc.Dataset('/Users/emily/Documents/UMBC/Dr_LimaLab/Merra2_Wind/gocart.dust_source.v5a.x1152_y721.nc', low_memory = False)
+    SSM = nc.Dataset('/Users/emily/Documents/UMBC/Dr_LimaLab/FAUXCART/FENGSHA_SOILGRIDS2017_GEFSv12_v1.2-2_M2gridsize.nc', low_memory = False)
+    list_of_stations = '/Users/emily/Documents/UMBC/Dr_LimaLab/ISDWind/MiddleEast/10m_confirmed_stations.csv'
+    MasterList = pd.read_csv(list_of_stations)
+    source_function_whole = S.variables['du_src'][0,:,:]
+    ssm = SSM.variables['ssm'][6,:,:]
+    SSM_long = SSM.variables['longitude'][:,:]
+    SSM_lat = SSM.variables['latitude'][:,:]
 
-#     fig, ax1 = plt.subplots(figsize = (8,8))
-#     ax2 = ax1.twinx()
-#     ax1.set_ylim(-.08,.08)
-#     ax2.set_ylim(-150,150)
-#     ax1.bar(x = np.arange(1,31,1), height = barValues, label = 'Difference [ISD - MERRA-2] \n 20-Year Average kg/m^2', color = 'orange')
-#     ax2.plot(lineValues, label = 'Potential Percent Change \n to MERRA-2 Emissions', color = 'blue')
-#     ax1.set_xlabel('Station Number')
-#     ax1.set_ylabel('Difference [ISD - MERRA-2] kg/m^2', color = 'orange', fontsize = 16)
-#     ax2.set_ylabel('Percent Change to MERRA-2 Emissions (%)', color = 'blue', fontsize = 16)
-#     ax2.legend(loc='upper right')
-#     ax1.legend(loc='upper left')
-#     plt.title('Dust Emissions - 20 Year Average', fontsize = 20)
-#     # plt.show()
-#     plt.savefig('20YearDustEmissionImpact.png', dpi = 300)
-#     return
+    long_source = S.variables['longitude'][:]
+    lat_source = S.variables['latitude'][:]
+    ax = plt.axes(projection = ccrs.PlateCarree())
+    ax.set_extent([30, 60, 10, 40])
+    plt.contourf(long_source, lat_source, source_function_whole, 30, transform = ccrs.PlateCarree())
+    # plt.contourf(SSM_long, SSM_lat, ssm, 30, transform = ccrs.PlateCarree())
+
+    ax.coastlines()
+    #plot data points over this
+    norm = mcolors.TwoSlopeNorm(vcenter=0)
+    scatter = ax.scatter(MasterList['Long'],MasterList['Lat'], edgecolors = 'black', c = percentChange, s = 200, cmap = 'bwr', norm = norm)
+    handles, labels = scatter.legend_elements(prop = 'colors', num = 9)
+    numbers = np.arange(1,31,1)
+    for i in range(len(numbers)):
+        x = MasterList['Long'][i]
+        y = MasterList['Lat'][i]
+        plt.text(x * (1 + 0.01), y * (1 + 0.01) , numbers[i], fontsize=12, c = 'white')
+    ax.legend(handles,labels, title = 'Yearly Average Percent Difference \n Between Measurement and Model', fontsize = 15)
+    plt.title('Emission Percent Change From Measurment to Model (ISD - MERRA-2)', fontsize = 20)
+    # plt.show()
+    plt.savefig(str(datetime.date.today()) + 'PercentDifferenceMap_TOPO.png', dpi = 600)
+
+    return 
+
+def Zscore(df):
+    list_of_stations = '/Users/emily/Documents/UMBC/Dr_LimaLab/ISDWind/MiddleEast/10m_confirmed_stations.csv'
+    MasterList = pd.read_csv(list_of_stations)
+    StationIDs = MasterList['Station_ID']
+
+
+    zwinter = []
+    zfall = []
+    zspring = []
+    zsummer = []
+
+    for stationID in StationIDs:
+        df = pd.read_csv('/Users/emily/Documents/UMBC/Dr_LimaLab/FAUXCART/FAUXCART_Run1/' + str(stationID) + '_FAUCART.csv', low_memory=False)
+        df = Seasons(df)
+        SeasonMeans_ISD = df.groupby( by = ['Season'])['Speed_ISD'].mean()
+        # Fall Sp Su W
+        SeasonSTD_ISD = df.groupby(by = ['Season'])['Speed_ISD'].std()
+        SeasonMeans_MERRA2 = df.groupby( by = ['Season'])['OG_winds_correct_box'].mean()
+        SeasonSTD_MERRA2 = df.groupby(by = ['Season'])['OG_winds_correct_box'].std()
+        winterNumber = len(df[df["Season"]=="Winter"])
+        fallNumber = len(df[df["Season"]=="Fall"])
+        springNumber = len(df[df["Season"]=="Spring"])
+        summerNumber = len(df[df["Season"]=="Summer"])
+        # print(SeasonMeans_MERRA2)
+        ztop = SeasonMeans_ISD[3] - SeasonMeans_MERRA2[3]
+        zbottom = np.sqrt((SeasonSTD_ISD[3]**2 + SeasonSTD_MERRA2[3]**2)/winterNumber)
+        print(ztop)
+        print(zbottom)
+        print(ztop/zbottom)
+        print('----------')
+        # zwinter.append(SeasonMeans_ISD[3] - SeasonMeans_MERRA2[3]/ (np.sqrt((SeasonSTD_ISD[3]**2 + SeasonSTD_MERRA2[3]**2)/winterNumber)))
+        # print(zwinter)
+    return
+
+def taylorDiagram(df):
+    #standard deviation of dataset
+    STD = df['Speed_ISD'].std()
+    #pearson's correlation coefficent 
+    CC, pvalue = scipy.stats.pearsonr(df['Speed_ISD'], df['OG_winds_correct_box'])
+
+    print(STD, CC)
+    #create figure 
+    fig = plt.figure(figsize=(12, 12))
+    dia = gv.TaylorDiagram(fig=fig, label='REF')
+    ax = plt.gca()
+
+    plt.show()
+
+    return
+
+def ConfusingPlot(massDifferenceWinds,):
+    list_of_stations = '/Users/emily/Documents/UMBC/Dr_LimaLab/ISDWind/MiddleEast/10m_confirmed_stations.csv'
+    MasterList = pd.read_csv(list_of_stations)
+    StationIDs = MasterList['Station_ID']
+    topo_directory = '/Users/emily/Documents/UMBC/Dr_LimaLab/FAUXCART/FAUXCART_Run1/'
+    ssm_directory = '/Users/emily/Documents/UMBC/Dr_LimaLab/FAUXCART/FAUXCART SSM Run#1/'
+
+    difference_due_to_map = []
+    for StationID in StationIDs:
+        topo_df = pd.read_csv(topo_directory + str(StationID) + '_FAUCART.csv', low_memory=False)
+        ssm_df = pd.read_csv(ssm_directory + str(StationID) + '_FAUXCART_SSM.csv', low_memory=False)
+
+        topoM2Winds_emission = np.nanmean(topo_df['Recalculated_flux_correct_box'])
+        ssmM2Winds_emission = np.nanmean(ssm_df['Recalculated_flux_correct_box'])
+
+        topoM2Winds_emission_year = topoM2Winds_emission*60*60*24*365 #kg/m^2/year
+        ssmM2Winds_emission_year = ssmM2Winds_emission*60*60*24*365
+
+        #ssm - m2 (new - old)
+        difference = ssmM2Winds_emission_year - topoM2Winds_emission_year
+        difference_due_to_map.append(difference)
+
+    print(difference_due_to_map)
+    fig, ax1 = plt.subplots(figsize = (10,8), frameon = True)
+    ax1.set_ylim(-.3,.3)
+    ax2 = ax1.twinx()
+    ax2.set_ylim(-.3, .3)
+    ax1.bar(x = np.arange(1,31,1) - .25, height = massDifferenceWinds, width = .5, label = 'Difference [ISD - MERRA-2] due to Winds Only (with Topo Source) \n 20-Year Average $kg/m^2/yr$', color = 'orange')
+    ax1.bar(x = np.arange(1,31,1) + .25, height = difference_due_to_map, width = .5, label = 'Difference [SSM - Topographic] due to Map \n 20-Year Average $kg/m^2/yr$', color = 'blue')
+    ax1.set_xlabel('Station Number', fontsize = 14)
+    ax1.xaxis.set_ticks(np.arange(1, 31, 1))
+    ax1.spines['bottom'].set_position(('data', 0))
+    ax1.set_ylabel('Dust Mass Emission Difference $kg/m^2/yr$', fontsize = 14)
+    plt.title('Dust Emission Differences Quantification', fontsize = 18)
+    ax1.legend(fontsize = 14)
+    # plt.show()
+    plt.savefig(str(datetime.date.today()) +'ConfusingPlot.png', dpi = 300)
+    return
+
 # '''Unfinished function'''
 # def AERONET_PLOT():
 #     # station_number = input('Which ISD station number would you like: ')

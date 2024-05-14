@@ -75,3 +75,4 @@ def parallelize(station_ID):
     print('intersection csv saved to ', os.getcwd())
     intersection_df.to_csv(directory + '/MERRA2_intersection_' + str(station_ID) + '.csv')
     return
+
