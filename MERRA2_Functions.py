@@ -7,8 +7,8 @@ import pandas as pd
 #location. Hour cut-offs are hard coded for the middle east time zone. Times are UTC
 def daytime_ws(long, lat, ws):
     '''Page 9 of MERRA2 ReadME includes how to go from coordinats to array index'''
-    i = ((long + 180)/(5/8)) + 1
-    j = ((lat + 90)/0.5) + 1
+    i = ((long + 180)/(5/8)) 
+    j = ((lat + 90)/0.5) 
     Daytime_ws = ws[3:15,round(j),round(i)]
 
     return Daytime_ws
@@ -16,8 +16,8 @@ def daytime_ws(long, lat, ws):
 #returns a pandas dataframe of values of wind speed at a specific location.
 # doesn't cut off any times
 def location_values(lat,long,ws):
-    i = ((float(long) + 180)/(5/8)) + 1
-    j = ((float(lat) + 90)/0.5) + 1
+    i = ((float(long) + 180)/(5/8)) 
+    j = ((float(lat) + 90)/0.5) 
     # print(ws.shape)
     ws_new = ws[0:24,round(j), round(i)]
 
@@ -57,9 +57,9 @@ def wind_magnitude_10m(ds):
     return ws
 
 #returns a list of the nc4 (should be MERRA-2) files in a given directory
-def filelist(directory):
+def filelist(directory,sdate,edate):
     filelist = []
-    for entry in os.scandir(directory):
+    for entry in os.scandir(directory + '/June2012/'):
         if(entry.path.endswith(".nc4")):
             filelist.append(entry.name)
     return(sorted(filelist))

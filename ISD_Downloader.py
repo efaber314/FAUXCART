@@ -21,6 +21,7 @@ def ISD_Downloader():
             # if df['Data in the last two decades (01/01/2001, 12/31/2010)'][i] == 1:
             #print(df['STATION_ID'][i]
             StationID = df['STATION_ID'][i]
+            ''' Years hard coded, needs to change to command line'''
             StartYear = 2001
             EndYear = 2020
             # StartYear = input("Start Year: ")

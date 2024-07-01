@@ -9,7 +9,7 @@ import netCDF4 as nc
 import numpy as np
 
 
-def parallelize(station_ID):
+def parallelize(station_ID, sdate, edate):
     # station_ID = input('Station ID: ')
     # station_ID = '40155099999'
     stationList, directory = my_ISD_Functions.getStationList(station_ID)
@@ -33,13 +33,15 @@ def parallelize(station_ID):
     lat = BIGdf_ISD['LATITUDE'].iloc[0]
     long = BIGdf_ISD['LONGITUDE'].iloc[0]
     # print(lat,long)
+    print(BIGdf_ISD.head())
     print(BIGdf_ISD.tail())
     # BIGdf_ISD.to_csv('ISD.csv')
 
     BIGdf_MERRA2 = pd.DataFrame()
+    ''' another directory hard code that needs to change'''
     os.chdir('/Users/emily/Documents/UMBC/Dr_LimaLab/Merra2_Wind/MERRA2_1hourly_whole_10m') #change directory to the external drive that has my data on it https://medium.com/analytics-vidhya/read-and-write-files-in-the-hard-disk-using-python-b89114fcd18f
     MERRA2directory = os.getcwd()
-    filelist = MERRA2_Functions.filelist(MERRA2directory)
+    filelist = MERRA2_Functions.filelist(MERRA2directory,sdate,edate)
     print('getting MERRA-2 files...')
     for file in filelist:
         # print(MERRA2directory,file)
@@ -70,9 +72,10 @@ def parallelize(station_ID):
     # print(intersection_df.head())
     # print(intersection_df.tail())
     # print(intersection_df.columns)
-    os.chdir(directory)
-    #TODO: save this in the results directory if in ME and idk where if not in the ME
+    # os.chdir(directory)
+    os.chdir('/Users/emily/Documents/UMBC/Dr_LimaLab/FAUXCART/ISDWind/51818099999_DATA/')
+    # TODO: save this in the results directory if in ME and idk where if not in the ME
     print('intersection csv saved to ', os.getcwd())
-    intersection_df.to_csv(directory + '/MERRA2_intersection_' + str(station_ID) + '.csv')
+    intersection_df.to_csv('/Users/emily/Documents/UMBC/Dr_LimaLab/FAUXCART/ISDWind/51818099999_DATA' + '/MERRA2_intersection_' + str(station_ID) + '.csv')
     return
 

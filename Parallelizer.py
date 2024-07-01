@@ -8,7 +8,7 @@ import datetime as dt
 import os
 
 
-def parallelize(list_of_stations):
+def parallelize(list_of_stations,sdate, edate):
     # list_of_stations = input('Path to or CSV of STATION_ID, BEGIN_DATE, and END_DATE: ')
     df = pd.read_csv(list_of_stations)
     print('recieved ', len(df), ' stations to parallelize')
@@ -16,8 +16,13 @@ def parallelize(list_of_stations):
     if correct == 'Y' or correct == 'y':
         df['BEGIN_DATE'] = pd.to_datetime(df['BEGIN_DATE'])
         df['END_DATE'] = pd.to_datetime(df['END_DATE'])
-        df.drop(df[df['END_DATE'] < dt.datetime(2020,1,1)].index, inplace = True)
-        df.drop(df[df['BEGIN_DATE']> dt.datetime(1999,12,31)].index, inplace = True)
+        '''These dates are hard coded, I would like to make them command line arguments'''
+        df.drop(df[df['END_DATE'] < dt.datetime(2012,6,1)].index, inplace = True) 
+        df.drop(df[df['BEGIN_DATE']> dt.datetime(2012,6,30)].index, inplace = True)
+
+        # df.drop(df[df['END_DATE'] < dt.datetime(sdate)].index, inplace = True) 
+        # df.drop(df[df['BEGIN_DATE']> dt.datetime(edate)].index, inplace = True)
+
         station_IDs = df['STATION_ID'].tolist()
         for station_ID in station_IDs:
             print(station_ID) #station number being processed
@@ -29,7 +34,7 @@ def parallelize(list_of_stations):
             processedString = 'intersection' #if this station has already been procesesed the directory will have a filename containing this
             flag = [i for i in dirlist if processedString in i] #search filenames for processedString. Returns list of filenames with the processedString
             if len(flag) == 0: #if no filenames with processed string
-                applesForApples.parallelize(station_ID) #process this data
+                applesForApples.parallelize(station_ID, sdate, edate) #process this data
                 # print( station_ID + ' needs processing')
             else: #otherwise
                 print(station_ID + ' Already processed!') #tell user this is processed and move on
